@@ -4,7 +4,6 @@ on:
     branches:
       - main
 
-
 jobs:
   create_issue:
     name: Create team sync issue
@@ -13,6 +12,7 @@ jobs:
       issues: write
     steps:
       - name: Create team sync issue
+        id: issue
         run: |
           if [[ $CLOSE_PREVIOUS == true ]]; then
             previous_issue_number=$(gh issue list \
@@ -29,6 +29,7 @@ jobs:
             --assignee "$ASSIGNEES" \
             --label "$LABELS" \
             --body "$BODY")
+          echo "url=$new_issue_url" >> $GITHUB_OUTPUT
           if [[ $PINNED == true ]]; then
             gh issue pin "$new_issue_url"
           fi
@@ -40,7 +41,6 @@ jobs:
           LABELS: ""
           BODY: |
             ### Agenda
-
             - [ ] Start the recording
             - [ ] Check-ins
             - [ ] Discussion points
@@ -48,7 +48,32 @@ jobs:
 
             ### Discussion Points
             Add things to discuss below
-
             - [Work this week](https://github.com/orgs/github/projects/3)
           PINNED: false
           CLOSE_PREVIOUS: false
+
+      - name: Notify Teams channel
+        run: |
+          RESPONSE=$(curl -s -X POST https://login.microsoftonline.com/${{ secrets.TEAMS_TENANT_ID }}/oauth2/v2.0/token \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "client_id=${{ secrets.TEAMS_CLIENT_ID }}&client_secret=${{ secrets.TEAMS_CLIENT_SECRET }}&grant_type=client_credentials&scope=https://graph.microsoft.com/.default")
+          ACCESS_TOKEN=$(echo $RESPONSE | jq -r .access_token)
+
+          curl -X POST "https://graph.microsoft.com/v1.0/teams/9afc3540-fc1b-4952-8d7b-944add8d73d8/channels/19:7e7e9e4c013a46ffafd78dff915db1d0@thread.tacv2/messages" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"body\": {
+                \"contentType\": \"html\",
+                \"content\": \"<at id=\\\"0\\\">Sagun Karki</at> new weekly sync issue created: <a href='${{ steps.issue.outputs.url }}'>view issue</a>\"
+              },
+              \"mentions\": [
+                {
+                  \"id\": \"0\",
+                  \"mentionText\": \"Sagun Karki\",
+                  \"mentioned\": {
+                    \"user\": { \"email\": \"skarki@netad.unl.edu\" }
+                  }
+                }
+              ]
+            }"
