@@ -52,15 +52,9 @@ jobs:
           PINNED: false
           CLOSE_PREVIOUS: false
 
-      - name: Send Teams message
+      - name: Notify Teams via webhook
         run: |
-          curl -X POST "https://graph.microsoft.com/v1.0/teams/{TEAM_ID}/channels/{CHANNEL_ID}/messages" \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"body\": {
-                \"contentType\": \"html\",
-                \"content\": \"New weekly sync issue created: <a href='${{ steps.issue.outputs.url }}'>view issue</a>\"
-              }
-            }"
+          curl -H 'Content-Type: application/json' \
+               -d "{\"text\": \"New weekly sync issue created: ${{ steps.issue.outputs.url }}\"}" \
+               ${{ secrets.TEAMS_WEBHOOK_URL }}
 
