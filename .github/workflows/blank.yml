@@ -1,22 +1,56 @@
-name: Weekly Team Sync
+name: Monthly Automation Check
 on:
   push:
     branches:
       - main
 
+# Set global environment variables
+env:
+  ASSIGNEES_GH: sagun-karki
+  ASSIGNEES_TEAMS_EMAILS: 'skarki@netad.unl.edu'
+  ISSUE_LABELS: ""
+  PINNED: false
+  CLOSE_PREVIOUS: false
+
 jobs:
+  calculate_date:
+    runs-on: ubuntu-latest
+    name: Calculate Date
+    outputs:
+      month: ${{ steps.date.outputs.month }}
+      year: ${{ steps.date.outputs.year }}
+    steps:
+      - id: date
+        run: |
+          echo "month=$(date +'%B')" >> $GITHUB_OUTPUT
+          echo "year=$(date +'%Y')" >> $GITHUB_OUTPUT
+  
   create_issue:
-    name: Create team sync issue
+    name: Create Monthly Check
+    needs: calculate_date
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
+    env:
+      MONTH_YEAR: ${{ needs.calculate_date.outputs.month }} ${{ needs.calculate_date.outputs.year }}
+      CURRENT_TITLE: Monthly Automation Check ${{ needs.calculate_date.outputs.month }} ${{ needs.calculate_date.outputs.year }}
     steps:
-      - name: Create team sync issue
+      # Step 1: Checkout the repo to access the issue body file
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Issue and Handle Previous
         id: issue
         run: |
-          if [[ $CLOSE_PREVIOUS == true ]]; then
+          # Read the body content from the file into a variable
+          ISSUE_BODY_CONTENT=$(cat .github/automatic_issue_creation_BODY.md)
+          
+          # Close previous issue if enabled
+          if [[ "${{ env.CLOSE_PREVIOUS }}" == "true" ]]; then
             previous_issue_number=$(gh issue list \
-              --label "$LABELS" \
+              --label "${{ env.ISSUE_LABELS }}" \
+              --state open \
               --json number \
               --jq '.[0].number')
             if [[ -n $previous_issue_number ]]; then
@@ -24,77 +58,21 @@ jobs:
               gh issue unpin "$previous_issue_number"
             fi
           fi
+          
+          # Create new issue using the variable for the body
           new_issue_url=$(gh issue create \
-            --title "$TITLE" \
-            --assignee "$ASSIGNEES" \
-            --label "$LABELS" \
-            --body "$BODY")
+            --title "$CURRENT_TITLE" \
+            --assignee "$ASSIGNEES_GH" \
+            --label "$ISSUE_LABELS" \
+            --body "$ISSUE_BODY_CONTENT") # <-- Using the variable here
           echo "url=$new_issue_url" >> $GITHUB_OUTPUT
-          if [[ $PINNED == true ]]; then
+          
+          # Pin new issue if enabled
+          if [[ "${{ env.PINNED }}" == "true" ]]; then
             gh issue pin "$new_issue_url"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TITLE: Team sync
-          ASSIGNEES: sagun-karki
-          LABELS: ""
-          BODY: |
-            ### Agenda
-            - [ ] Start the recording
-            - [ ] Check-ins
-            - [ ] Discussion points
-            - [ ] Post the recording
-
-            ### Discussion Points
-            Add things to discuss below
-            - [Work this week](https://github.com/orgs/github/projects/3)
-          PINNED: false
-          CLOSE_PREVIOUS: false
           
-        # Step 2: Notify Teams via webhook
-      - name: Notify Teams via webhook
-        run: |
-          # Construct the JSON payload with the output URL
-          TEAMS_PAYLOAD=$(jq -n \
-            --arg url "${{ steps.issue.outputs.url }}" \
-            '{
-              "attachments": [
-                {
-                  "contentType": "application/vnd.microsoft.card.adaptive",
-                  "content": {
-                    "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                    "type": "AdaptiveCard",
-                    "version": "1.4",
-                    "body": [
-                      {
-                        "type": "TextBlock",
-                        "text": "📅 Monthly Sync Issue Created",
-                        "size": "Large",
-                        "weight": "Bolder"
-                      },
-                      {
-                        "type": "TextBlock",
-                        "text": "A new weekly sync issue has been generated. Click the link below to view the agenda and discussion points.",
-                        "wrap": true
-                      },
-                      {
-                        "type": "ActionSet",
-                        "actions": [
-                          {
-                            "type": "Action.OpenUrl",
-                            "title": "Open Issue",
-                            "url": $url
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                }
-              ]
-            }')
-
-          # Send the webhook
-          curl -s -X POST -H 'Content-Type: application/json' \
-            -d "$TEAMS_PAYLOAD" \
-            "${{ secrets.TEAMS_WEBHOOK_URL }}"
+    
