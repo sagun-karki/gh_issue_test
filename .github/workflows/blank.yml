@@ -44,7 +44,8 @@ jobs:
         id: issue
         run: |
           # Read the body content from the file into a variable
-          ISSUE_BODY_CONTENT=$(cat .github/automatic_issue_creation_BODY.md)
+          ISSUE_BODY_CONTENT=$(cat .github/ISSUE_TEMPLATE/automatic_issue_creation_BODY.md)
+
           
           # Close previous issue if enabled
           if [[ "${{ env.CLOSE_PREVIOUS }}" == "true" ]]; then
